@@ -8,6 +8,7 @@ package sdc
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 
 	"github.com/robskie/bit"
 	"github.com/robskie/ranksel"
@@ -101,12 +102,18 @@ func (a *Array) GobEncode() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	enc := gob.NewEncoder(buf)
 
-	enc.Encode(a.bits)
-	enc.Encode(a.selector)
-	enc.Encode(a.length)
-	enc.Encode(a.initialized)
+	err := checkErr(
+		enc.Encode(a.bits),
+		enc.Encode(a.selector),
+		enc.Encode(a.length),
+		enc.Encode(a.initialized),
+	)
 
-	return buf.Bytes(), nil
+	if err != nil {
+		err = fmt.Errorf("sdc: encode failed (%v)", err)
+	}
+
+	return buf.Bytes(), err
 }
 
 // GobDecode populates this array from gob streams.
@@ -114,20 +121,20 @@ func (a *Array) GobDecode(data []byte) error {
 	buf := bytes.NewReader(data)
 	dec := gob.NewDecoder(buf)
 
-	if a.bits == nil {
-		a.bits = bit.NewArray(0)
+	a.bits = bit.NewArray(0)
+	a.selector = ranksel.NewBitVector(nil)
+	err := checkErr(
+		dec.Decode(a.bits),
+		dec.Decode(a.selector),
+		dec.Decode(&a.length),
+		dec.Decode(&a.initialized),
+	)
+
+	if err != nil {
+		err = fmt.Errorf("sdc: decode failed (%v)", err)
 	}
 
-	if a.selector == nil {
-		a.selector = ranksel.NewBitVector(nil)
-	}
-
-	dec.Decode(a.bits)
-	dec.Decode(a.selector)
-	dec.Decode(&a.length)
-	dec.Decode(&a.initialized)
-
-	return nil
+	return err
 }
 
 func min(a, b int) int {
@@ -136,4 +143,14 @@ func min(a, b int) int {
 	}
 
 	return b
+}
+
+func checkErr(err ...error) error {
+	for _, e := range err {
+		if e != nil {
+			return e
+		}
+	}
+
+	return nil
 }
